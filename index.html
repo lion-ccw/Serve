@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>門市展示系統</title>
+    <!-- 基礎框架載入 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.12/babel.min.js"></script>
+    
+    <style>
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            background-color: #020617; 
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .fade-transition {
+            transition: background-image 0.8s ease-in-out, opacity 0.5s ease;
+        }
+        .btn-active:active { transform: scale(0.96); opacity: 0.9; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        /**
+         * 門市 Kiosk 系統核心邏輯
+         * 封裝於立即執行函式中，避免全域變數污染
+         */
+        (function() {
+            const { useState, useEffect, useCallback, useRef } = React;
+
+            // --- 內嵌 SVG 圖標元件 (完全排除外部載入風險) ---
+            const KioskIcon = ({ name, size = 24, className = "" }) => {
+                const paths = {
+                    Settings: <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>,
+                    Image: <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>,
+                    MessageSquare: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>,
+                    RefreshCw: <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>,
+                    ChevronLeft: <path d="m15 18-6-6 6-6"/>,
+                    ChevronRight: <path d="m9 18 6-6-6 6"/>,
+                    Save: <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>,
+                    Plus: <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>,
+                    Trash2: <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                };
+                return (
+                    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                        {paths[name]}
+                    </svg>
+                );
+            };
+
+            const App = () => {
+                const [currentTab, setCurrentTab] = useState('home');
+                const [config, setConfig] = useState({
+                    imageUrls: JSON.parse(localStorage.getItem('kiosk_images')) || [
+                        'https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=1000&q=80',
+                        'https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?auto=format&fit=crop&w=1000&q=80'
+                    ],
+                    surveyUrl: localStorage.getItem('kiosk_survey_url') || '',
+                    storeName: localStorage.getItem('kiosk_store_name') || '門市展示中心'
+                });
+                
+                const [currentIndex, setCurrentIndex] = useState(0);
+                const [toast, setToast] = useState(null);
+                const timerRef = useRef(null);
+
+                // --- 1. 自動播放 (5秒) ---
+                useEffect(() => {
+                    let playInterval = null;
+                    if (currentTab === 'home' && config.imageUrls.length > 1) {
+                        playInterval = setInterval(() => {
+                            setCurrentIndex((prev) => (prev === config.imageUrls.length - 1 ? 0 : prev + 1));
+                        }, 5000);
+                    }
+                    return () => { if (playInterval) clearInterval(playInterval); };
+                }, [currentTab, config.imageUrls]);
+
+                // --- 2. 閒置跳轉 (60秒) ---
+                const restartInactivityTimer = useCallback(() => {
+                    if (timerRef.current) clearTimeout(timerRef.current);
+                    if (currentTab !== 'home') {
+                        timerRef.current = setTimeout(() => {
+                            setCurrentTab('home');
+                            setCurrentIndex(0);
+                            setToast("🔄 系統已自動返回展示畫面");
+                        }, 60000);
+                    }
+                }, [currentTab]);
+
+                useEffect(() => {
+                    const activityEvents = ['touchstart', 'mousedown', 'scroll', 'keydown'];
+                    const onUserActivity = () => restartInactivityTimer();
+                    activityEvents.forEach(e => window.addEventListener(e, onUserActivity, { passive: true }));
+                    restartInactivityTimer();
+                    return () => {
+                        activityEvents.forEach(e => window.removeEventListener(e, onUserActivity));
+                        if (timerRef.current) clearTimeout(timerRef.current);
+                    };
+                }, [restartInactivityTimer]);
+
+                useEffect(() => {
+                    if (toast) {
+                        const t = setTimeout(() => setToast(null), 3500);
+                        return () => clearTimeout(t);
+                    }
+                }, [toast]);
+
+                const saveSettings = (newConfig) => {
+                    localStorage.setItem('kiosk_images', JSON.stringify(newConfig.imageUrls));
+                    localStorage.setItem('kiosk_survey_url', newConfig.surveyUrl);
+                    localStorage.setItem('kiosk_store_name', newConfig.storeName);
+                    setConfig(newConfig);
+                    setToast("✅ 設定已成功儲存");
+                    setCurrentTab('home');
+                };
+
+                return (
+                    <div className="flex h-screen w-screen bg-slate-950 overflow-hidden text-slate-800 flex-col font-sans select-none">
+                        <main className="flex-1 relative overflow-hidden flex flex-col">
+                            
+                            {/* 畫面一：全螢幕直式照片展示 */}
+                            {currentTab === 'home' && (
+                                <div className="relative h-full w-full bg-black flex flex-col animate-in fade-in duration-700">
+                                    {config.imageUrls.length > 0 ? (
+                                        <>
+                                            <div 
+                                                className="flex-1 w-full bg-cover bg-center bg-no-repeat fade-transition"
+                                                style={{ backgroundImage: `url(${config.imageUrls[currentIndex]})` }} 
+                                            />
+                                            <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                                            
+                                            <button onClick={() => setCurrentIndex(p => p === 0 ? config.imageUrls.length - 1 : p - 1)} className="absolute left-6 top-1/2 -translate-y-1/2 w-16 h-16 bg-black/20 backdrop-blur-md text-white rounded-full flex items-center justify-center active:scale-90 z-10 border border-white/10 shadow-2xl">
+                                                <KioskIcon name="ChevronLeft" size={32}/>
+                                            </button>
+                                            <button onClick={() => setCurrentIndex(p => p === config.imageUrls.length - 1 ? 0 : p + 1)} className="absolute right-6 top-1/2 -translate-y-1/2 w-16 h-16 bg-black/20 backdrop-blur-md text-white rounded-full flex items-center justify-center active:scale-90 z-10 border border-white/10 shadow-2xl">
+                                                <KioskIcon name="ChevronRight" size={32}/>
+                                            </button>
+
+                                            <div className="absolute bottom-12 left-0 w-full flex justify-center space-x-3">
+                                                {config.imageUrls.map((_, idx) => (
+                                                    <div key={idx} className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentIndex ? 'w-12 bg-white shadow-[0_0_15px_rgba(255,255,255,1)]' : 'w-2.5 bg-white/30'}`} />
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-white flex flex-col items-center justify-center h-full space-y-6 opacity-40 px-12 text-center">
+                                            <KioskIcon name="Image" size={100} />
+                                            <p className="text-3xl font-black tracking-widest leading-relaxed">歡迎使用展示系統<br/>請點擊齒輪進行設定</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* 畫面二：內建問卷調查 (Iframe) */}
+                            {currentTab === 'survey' && (
+                                <div className="h-full flex flex-col bg-white animate-in slide-in-from-right duration-500">
+                                    <div className="flex-1">
+                                        {config.surveyUrl ? (
+                                            <iframe src={config.surveyUrl} className="w-full h-full border-none" title="Survey" />
+                                        ) : (
+                                            <div className="h-full flex flex-col items-center justify-center text-slate-300 bg-slate-50 p-12 text-center">
+                                                <KioskIcon name="MessageSquare" size={140} className="mb-8 opacity-10" />
+                                                <p className="text-3xl font-bold text-slate-400">尚未設定問卷連結</p>
+                                                <p className="mt-4 text-slate-300">請至後台設定 Google Forms 網址</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 畫面三：後台管理介面 */}
+                            {currentTab === 'settings' && (
+                                <div className="h-full bg-slate-50 p-8 overflow-y-auto animate-in fade-in duration-300 no-scrollbar">
+                                    <div className="max-w-2xl mx-auto pb-24">
+                                        <div className="flex items-center justify-between mb-10">
+                                            <h2 className="text-4xl font-black text-slate-900">系統管理後台</h2>
+                                            <button onClick={() => setCurrentTab('home')} className="p-5 bg-white rounded-3xl shadow-sm text-slate-400 btn-active border border-slate-100">
+                                                <KioskIcon name="ChevronLeft" size={32} />
+                                            </button>
+                                        </div>
+                                        <div className="bg-white rounded-[3rem] p-10 shadow-2xl border border-slate-200/50 space-y-12">
+                                            <section>
+                                                <label className="block text-sm font-black text-slate-400 mb-4 tracking-widest uppercase italic">Shop Name / 門市名稱</label>
+                                                <input type="text" value={config.storeName} onChange={(e) => setConfig({...config, storeName: e.target.value})} className="w-full p-6 bg-slate-50 border border-slate-200 rounded-3xl outline-none focus:ring-4 focus:ring-blue-100 transition-all font-bold text-xl" />
+                                            </section>
+                                            <section>
+                                                <label className="block text-sm font-black text-slate-400 mb-4 tracking-widest uppercase italic text-center">Display Photos / 展示照片清單 (直式連結)</label>
+                                                <div className="space-y-4">
+                                                    {config.imageUrls.map((url, idx) => (
+                                                        <div key={idx} className="flex space-x-3 animate-in fade-in slide-in-from-top-2">
+                                                            <input type="text" value={url} onChange={(e) => { const newUrls = [...config.imageUrls]; newUrls[idx] = e.target.value; setConfig({...config, imageUrls: newUrls}); }} className="flex-1 p-5 bg-slate-50 border border-slate-200 rounded-2xl text-base" placeholder="貼上照片直接連結 (如 .jpg)" />
+                                                            <button onClick={() => setConfig({...config, imageUrls: config.imageUrls.filter((_, i) => i !== idx)})} className="p-5 bg-red-50 text-red-400 rounded-2xl active:scale-90 transition-all"><KioskIcon name="Trash2" size={24}/></button>
+                                                        </div>
+                                                    ))}
+                                                    <button onClick={() => setConfig({...config, imageUrls: [...config.imageUrls, '']})} className="w-full py-7 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 hover:text-blue-500 hover:border-blue-200 active:bg-slate-50 transition-all font-black text-xl">+ 新增一張直式行程照片</button>
+                                                </div>
+                                            </section>
+                                            <section>
+                                                <label className="block text-sm font-black text-slate-400 mb-4 tracking-widest uppercase italic">Survey Link / 滿意度問卷連結</label>
+                                                <input type="text" value={config.surveyUrl} onChange={(e) => setConfig({...config, surveyUrl: e.target.value})} className="w-full p-6 bg-slate-50 border border-slate-200 rounded-3xl outline-none focus:ring-4 focus:ring-blue-100 transition-all font-bold text-xl" placeholder="https://forms.gle/..." />
+                                            </section>
+                                            <button onClick={() => saveSettings(config)} className="w-full py-9 bg-slate-900 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl active:scale-95 transition-all flex items-center justify-center space-x-4">
+                                                <KioskIcon name="Save" size={32} />
+                                                <span>儲存設定並啟動門市系統</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </main>
+
+                        {/* 底部功能列：針對直式 iPad 最佳化高度 */}
+                        <footer className="h-40 bg-white border-t border-slate-100 flex items-center px-8 z-40 pb-safe shadow-[0_-20px_60px_rgba(0,0,0,0.1)]">
+                            <button onClick={() => setCurrentTab('settings')} className={`p-6 rounded-3xl transition-all btn-active ${currentTab === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-slate-200'}`}>
+                                <KioskIcon name="Settings" size={40}/>
+                            </button>
+                            <div className="flex-1 flex justify-center space-x-6 mx-4">
+                                <button onClick={() => { setCurrentTab('home'); setCurrentIndex(0); }} className={`flex-none w-40 py-7 rounded-[2.5rem] flex flex-col items-center transition-all btn-active ${currentTab === 'home' ? 'bg-slate-800 text-white shadow-xl' : 'bg-slate-50 text-slate-400'}`}>
+                                    <KioskIcon name="Image" size={32}/>
+                                    <span className="font-black text-xs mt-2 uppercase tracking-widest">展示模式</span>
+                                </button>
+                                <button onClick={() => setCurrentTab('survey')} className={`flex-1 max-w-[420px] py-7 rounded-[2.5rem] flex flex-col items-center transition-all btn-active ${currentTab === 'survey' ? 'bg-orange-500 text-white shadow-2xl shadow-orange-300' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
+                                    <div className="flex items-center space-x-4">
+                                        <KioskIcon name="MessageSquare" size={36}/>
+                                        <span className="font-black text-3xl tracking-tighter">服務滿意度評分</span>
+                                    </div>
+                                    <span className="text-xs font-bold mt-1 opacity-80 tracking-widest">TAP TO RATE OUR SERVICE</span>
+                                </button>
+                            </div>
+                            <button onClick={() => window.location.reload()} className="p-6 text-slate-200 btn-active">
+                                <KioskIcon name="RefreshCw" size={36}/>
+                            </button>
+                        </footer>
+
+                        {/* 全域系統提示 */}
+                        {toast && (
+                            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-2xl text-white px-12 py-7 rounded-[3rem] font-black text-2xl shadow-2xl z-[100] animate-in fade-in zoom-in duration-300 border border-white/10">
+                                {toast}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // 啟動 React 程序
+            const rootContainer = document.getElementById('root');
+            if (rootContainer) {
+                ReactDOM.createRoot(rootContainer).render(<App />);
+            }
+        })();
+    </script>
+</body>
+</html>
