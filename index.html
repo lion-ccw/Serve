@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>門市展示系統</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 React 相關函式庫 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 載入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide-react@latest"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+        const { Settings, Image, MessageSquare, RefreshCw, ChevronLeft, ChevronRight, Save, Info, Plus, Trash2 } = LucideReact;
+
+        const App = () => {
+            // --- 狀態管理 ---
+            const [currentTab, setCurrentTab] = useState('home');
+            const [config, setConfig] = useState({
+                imageUrls: JSON.parse(localStorage.getItem('kiosk_images')) || [
+                    'https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=1000&q=80',
+                    'https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?auto=format&fit=crop&w=1000&q=80'
+                ],
+                surveyUrl: localStorage.getItem('kiosk_survey_url') || '',
+                storeName: localStorage.getItem('kiosk_store_name') || '門市展示中心'
+            });
+            
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [toast, setToast] = useState(null);
+            const timerRef = useRef(null);
+
+            // --- 閒置偵測 (1分鐘) ---
+            const resetInactivityTimer = useCallback(() => {
+                if (timerRef.current) clearTimeout(timerRef.current);
+                if (currentTab !== 'home') {
+                    timerRef.current = setTimeout(() => {
+                        setCurrentTab('home');
+                        setCurrentIndex(0);
+                        setToast("🔄 系統已自動返回展示畫面");
+                    }, 60000);
+                }
+            }, [currentTab]);
+
+            useEffect(() => {
+                const events = ['touchstart', 'mousedown', 'scroll', 'keydown'];
+                const handleActivity = () => resetInactivityTimer();
+                events.forEach(event => window.addEventListener(event, handleActivity));
+                resetInactivityTimer();
+                return () => {
+                    events.forEach(event => window.removeEventListener(event, handleActivity));
+                    if (timerRef.current) clearTimeout(timerRef.current);
+                };
+            }, [resetInactivityTimer]);
+
+            // --- 自動輪播 (5秒) ---
+            useEffect(() => {
+                let interval;
+                if (currentTab === 'home' && config.imageUrls.length > 1) {
+                    interval = setInterval(() => {
+                        setCurrentIndex((prev) => (prev === config.imageUrls.length - 1 ? 0 : prev + 1));
+                    }, 5000);
+                }
+                return () => clearInterval(interval);
+            }, [currentTab, config.imageUrls.length]);
+
+            useEffect(() => {
+                if (toast) {
+                    const timer = setTimeout(() => setToast(null), 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [toast]);
+
+            const saveSettings = (newConfig) => {
+                localStorage.setItem('kiosk_images', JSON.stringify(newConfig.imageUrls));
+                localStorage.setItem('kiosk_survey_url', newConfig.surveyUrl);
+                localStorage.setItem('kiosk_store_name', newConfig.storeName);
+                setConfig(newConfig);
+                setToast("✅ 設定已成功儲存");
+                setCurrentTab('home');
+            };
+
+            return (
+                <div className="flex h-screen w-screen bg-slate-950 overflow-hidden text-slate-800 flex-col">
+                    <main className="flex-1 relative overflow-hidden flex flex-col">
+                        {currentTab === 'home' && (
+                            <div className="relative h-full w-full bg-black flex flex-col">
+                                {config.imageUrls.length > 0 ? (
+                                    <>
+                                        <div className="flex-1 w-full bg-cover bg-center bg-no-repeat transition-all duration-1000 ease-in-out"
+                                             style={{ backgroundImage: `url(${config.imageUrls[currentIndex]})` }} />
+                                        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+                                        <button onClick={() => setCurrentIndex(prev => prev === 0 ? config.imageUrls.length - 1 : prev - 1)} className="absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-black/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center active:scale-90 z-10 border border-white/10"><ChevronLeft size={32}/></button>
+                                        <button onClick={() => setCurrentIndex(prev => prev === config.imageUrls.length - 1 ? 0 : prev + 1)} className="absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-black/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center active:scale-90 z-10 border border-white/10"><ChevronRight size={32}/></button>
+                                        <div className="absolute bottom-10 left-0 w-full flex justify-center space-x-2.5">
+                                            {config.imageUrls.map((_, idx) => (
+                                                <div key={idx} className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentIndex ? 'w-10 bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)]' : 'w-2 bg-white/30'}`} />
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : <div className="text-white text-center p-20">請在設定中添加圖片</div>}
+                            </div>
+                        )}
+                        {currentTab === 'survey' && (
+                            <div className="h-full flex flex-col bg-white">
+                                <div className="flex-1">
+                                    {config.surveyUrl ? <iframe src={config.surveyUrl} className="w-full h-full border-none" /> : <p className="p-20 text-center">尚未設定問卷連結</p>}
+                                </div>
+                            </div>
+                        )}
+                        {currentTab === 'settings' && (
+                            <div className="h-full bg-slate-50 p-6 overflow-y-auto">
+                                <div className="max-w-xl mx-auto pb-12">
+                                    <h2 className="text-3xl font-black mb-8">後台設定</h2>
+                                    <div className="bg-white rounded-[2rem] p-8 shadow-xl space-y-8">
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 mb-3 tracking-widest">門市名稱</label>
+                                            <input type="text" value={config.storeName} onChange={(e) => setConfig({...config, storeName: e.target.value})} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 mb-3 tracking-widest">照片網址清單</label>
+                                            <div className="space-y-3">
+                                                {config.imageUrls.map((url, idx) => (
+                                                    <div key={idx} className="flex space-x-2">
+                                                        <input type="text" value={url} onChange={(e) => { const newUrls = [...config.imageUrls]; newUrls[idx] = e.target.value; setConfig({...config, imageUrls: newUrls}); }} className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-xl text-sm" />
+                                                        <button onClick={() => setConfig({...config, imageUrls: config.imageUrls.filter((_, i) => i !== idx)})} className="p-4 bg-red-50 text-red-400 rounded-xl"><Trash2 size={20}/></button>
+                                                    </div>
+                                                ))}
+                                                <button onClick={() => setConfig({...config, imageUrls: [...config.imageUrls, '']})} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-xl">+ 新增圖片</button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 mb-3 tracking-widest">問卷連結</label>
+                                            <input type="text" value={config.surveyUrl} onChange={(e) => setConfig({...config, surveyUrl: e.target.value})} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none" />
+                                        </div>
+                                        <button onClick={() => saveSettings(config)} className="w-full py-6 bg-slate-900 text-white rounded-2xl font-black">儲存設定</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                    <footer className="h-32 bg-white border-t flex items-center px-6 z-40 pb-safe">
+                        <button onClick={() => setCurrentTab('settings')} className={`p-4 rounded-2xl ${currentTab === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-slate-200'}`}><Settings size={32}/></button>
+                        <div className="flex-1 flex justify-center space-x-4 mx-2">
+                            <button onClick={() => setCurrentTab('home')} className={`flex-none w-32 py-5 rounded-3xl flex flex-col items-center ${currentTab === 'home' ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-400'}`}><Image size={24}/><span className="font-bold text-[10px]">展示</span></button>
+                            <button onClick={() => setCurrentTab('survey')} className={`flex-1 max-w-[300px] py-5 rounded-3xl flex flex-col items-center ${currentTab === 'survey' ? 'bg-orange-500 text-white shadow-lg' : 'bg-orange-50 text-orange-600'}`}>
+                                <div className="flex items-center space-x-2"><MessageSquare size={28}/><span className="font-black text-xl">服務滿意度評分</span></div>
+                            </button>
+                        </div>
+                        <button onClick={() => window.location.reload()} className="p-4 text-slate-200"><RefreshCw size={28}/></button>
+                    </footer>
+                    {toast && <div className="fixed top-1/2 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-5 rounded-3xl font-bold z-[100]">{toast}</div>}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
