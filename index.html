@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>門市展示系統</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 React 相關函式庫 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 載入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
+    <style>
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            background-color: #020617; /* slate-950 */
+        }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        /* 防止圖片閃爍 */
+        .bg-transition {
+            transition: background-image 1s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        const App = () => {
+            // 安全取得 Lucide 圖標，避免載入失敗導致空白
+            const Icons = window.LucideReact || {};
+            const { 
+                Settings, Image, MessageSquare, RefreshCw, 
+                ChevronLeft, ChevronRight, Save, Info, Plus, Trash2 
+            } = Icons;
+
+            // --- 狀態管理 ---
+            const [currentTab, setCurrentTab] = useState('home');
+            const [config, setConfig] = useState({
+                imageUrls: JSON.parse(localStorage.getItem('kiosk_images')) || [
+                    'https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=1000&q=80',
+                    'https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?auto=format&fit=crop&w=1000&q=80'
+                ],
+                surveyUrl: localStorage.getItem('kiosk_survey_url') || '',
+                storeName: localStorage.getItem('kiosk_store_name') || '門市展示中心'
+            });
+            
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [toast, setToast] = useState(null);
+            const timerRef = useRef(null);
+
+            // --- 閒置偵測 (1分鐘) ---
+            const resetInactivityTimer = useCallback(() => {
+                if (timerRef.current) clearTimeout(timerRef.current);
+                if (currentTab !== 'home') {
+                    timerRef.current = setTimeout(() => {
+                        setCurrentTab('home');
+                        setCurrentIndex(0);
+                        setToast("🔄 系統已自動返回展示畫面");
+                    }, 60000);
+                }
+            }, [currentTab]);
+
+            useEffect(() => {
+                const events = ['touchstart', 'mousedown', 'scroll', 'keydown'];
+                const handleActivity = () => resetInactivityTimer();
+                events.forEach(event => window.addEventListener(event, handleActivity));
+                resetInactivityTimer();
+                return () => {
+                    events.forEach(event => window.removeEventListener(event, handleActivity));
+                    if (timerRef.current) clearTimeout(timerRef.current);
+                };
+            }, [resetInactivityTimer]);
+
+            // --- 自動輪播 (5秒) ---
+            useEffect(() => {
+                let interval;
+                if (currentTab === 'home' && config.imageUrls.length > 1) {
+                    interval = setInterval(() => {
+                        setCurrentIndex((prev) => (prev === config.imageUrls.length - 1 ? 0 : prev + 1));
+                    }, 5000);
+                }
+                return () => clearInterval(interval);
+            }, [currentTab, config.imageUrls.length]);
+
+            useEffect(() => {
+                if (toast) {
+                    const timer = setTimeout(() => setToast(null), 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [toast]);
+
+            const saveSettings = (newConfig) => {
+                localStorage.setItem('kiosk_images', JSON.stringify(newConfig.imageUrls));
+                localStorage.setItem('kiosk_survey_url', newConfig.surveyUrl);
+                localStorage.setItem('kiosk_store_name', newConfig.storeName);
+                setConfig(newConfig);
+                setToast("✅ 設定已成功儲存");
+                setCurrentTab('home');
+            };
+
+            // 如果圖標庫還沒載入，顯示簡單的載入中畫面
+            if (!Icons.Settings) {
+                return <div className="h-screen w-screen flex items-center justify-center text-white bg-slate-900 font-bold">系統初始化中...</div>;
+            }
+
+            return (
+                <div className="flex h-screen w-screen bg-slate-950 overflow-hidden text-slate-800 flex-col">
+                    <main className="flex-1 relative overflow-hidden flex flex-col">
+                        {/* 1. 照片展示頁面 */}
+                        {currentTab === 'home' && (
+                            <div className="relative h-full w-full bg-black flex flex-col">
+                                {config.imageUrls.length > 0 ? (
+                                    <>
+                                        <div className="flex-1 w-full bg-cover bg-center bg-no-repeat bg-transition"
+                                             style={{ backgroundImage: `url(${config.imageUrls[currentIndex]})` }} />
+                                        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+                                        <button onClick={() => setCurrentIndex(prev => prev === 0 ? config.imageUrls.length - 1 : prev - 1)} className="absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-black/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center active:scale-90 z-10 border border-white/10">
+                                            <ChevronLeft size={32}/>
+                                        </button>
+                                        <button onClick={() => setCurrentIndex(prev => prev === config.imageUrls.length - 1 ? 0 : prev + 1)} className="absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-black/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center active:scale-90 z-10 border border-white/10">
+                                            <ChevronRight size={32}/>
+                                        </button>
+                                        <div className="absolute bottom-10 left-0 w-full flex justify-center space-x-2.5">
+                                            {config.imageUrls.map((_, idx) => (
+                                                <div key={idx} className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentIndex ? 'w-10 bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)]' : 'w-2 bg-white/30'}`} />
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : <div className="text-white text-center p-20 flex flex-col items-center justify-center h-full">
+                                        <Image size={48} className="mb-4 opacity-50" />
+                                        <p className="text-xl">請在設定中添加圖片網址</p>
+                                    </div>}
+                            </div>
+                        )}
+
+                        {/* 2. 滿意度調查頁面 */}
+                        {currentTab === 'survey' && (
+                            <div className="h-full flex flex-col bg-white">
+                                <div className="flex-1">
+                                    {config.surveyUrl ? (
+                                        <iframe src={config.surveyUrl} className="w-full h-full border-none" title="Survey" />
+                                    ) : (
+                                        <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                                            <MessageSquare size={100} className="mb-6 opacity-20" />
+                                            <p className="text-2xl font-bold text-slate-400">尚未設定問卷連結</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 3. 後台設定頁面 */}
+                        {currentTab === 'settings' && (
+                            <div className="h-full bg-slate-50 p-6 overflow-y-auto">
+                                <div className="max-w-xl mx-auto pb-12">
+                                    <div className="flex items-center justify-between mb-8">
+                                        <h2 className="text-3xl font-black text-slate-800">系統設定</h2>
+                                        <button onClick={() => setCurrentTab('home')} className="p-3 bg-white rounded-2xl shadow-sm text-slate-400">
+                                            <ChevronLeft size={28} />
+                                        </button>
+                                    </div>
+                                    <div className="bg-white rounded-[2rem] p-8 shadow-xl border border-slate-100 space-y-8">
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 mb-3 tracking-widest uppercase">門市名稱</label>
+                                            <input type="text" value={config.storeName} onChange={(e) => setConfig({...config, storeName: e.target.value})} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 mb-3 tracking-widest uppercase">直式照片網址清單</label>
+                                            <div className="space-y-3">
+                                                {config.imageUrls.map((url, idx) => (
+                                                    <div key={idx} className="flex space-x-2">
+                                                        <input type="text" value={url} onChange={(e) => { const newUrls = [...config.imageUrls]; newUrls[idx] = e.target.value; setConfig({...config, imageUrls: newUrls}); }} className="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-xl text-sm" placeholder="https://..." />
+                                                        <button onClick={() => setConfig({...config, imageUrls: config.imageUrls.filter((_, i) => i !== idx)})} className="p-4 bg-red-50 text-red-400 rounded-xl"><Trash2 size={20}/></button>
+                                                    </div>
+                                                ))}
+                                                <button onClick={() => setConfig({...config, imageUrls: [...config.imageUrls, '']})} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:text-blue-500 hover:border-blue-200 transition-all">+ 新增圖片網址</button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 mb-3 tracking-widest uppercase">問卷連結 (Google Forms)</label>
+                                            <input type="text" value={config.surveyUrl} onChange={(e) => setConfig({...config, surveyUrl: e.target.value})} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100" placeholder="https://forms.gle/..." />
+                                        </div>
+                                        <button onClick={() => saveSettings(config)} className="w-full py-6 bg-slate-900 text-white rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all flex items-center justify-center space-x-2">
+                                            <Save size={24} />
+                                            <span>儲存設定</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* 底部導覽列 */}
+                    <footer className="h-32 bg-white border-t flex items-center px-6 z-40 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+                        <button onClick={() => setCurrentTab('settings')} className={`p-4 rounded-2xl transition-all ${currentTab === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-slate-200'}`}>
+                            <Settings size={32}/>
+                        </button>
+                        <div className="flex-1 flex justify-center space-x-4 mx-2">
+                            <button onClick={() => { setCurrentTab('home'); setCurrentIndex(0); }} className={`flex-none w-32 py-5 rounded-3xl flex flex-col items-center transition-all ${currentTab === 'home' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-400'}`}>
+                                <Image size={24}/>
+                                <span className="font-bold text-[10px] mt-1 uppercase tracking-widest">展示</span>
+                            </button>
+                            <button onClick={() => setCurrentTab('survey')} className={`flex-1 max-w-[300px] py-5 rounded-3xl flex flex-col items-center transition-all ${currentTab === 'survey' ? 'bg-orange-500 text-white shadow-xl shadow-orange-200' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
+                                <div className="flex items-center space-x-2">
+                                    <MessageSquare size={28}/>
+                                    <span className="font-black text-xl">服務滿意度評分</span>
+                                </div>
+                                <span className="text-[10px] font-bold mt-1 opacity-70">TAP TO RATE</span>
+                            </button>
+                        </div>
+                        <button onClick={() => window.location.reload()} className="p-4 text-slate-200 hover:text-slate-400 transition-colors">
+                            <RefreshCw size={28}/>
+                        </button>
+                    </footer>
+
+                    {/* Toast 提示 */}
+                    {toast && (
+                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md text-white px-8 py-5 rounded-[2rem] font-bold text-lg shadow-2xl z-[100] animate-in fade-in zoom-in duration-300">
+                            {toast}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // 確保 DOM 加載後才渲染
+        const rootElement = document.getElementById('root');
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(<App />);
+    </script>
+</body>
+</html>
